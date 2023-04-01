@@ -25,7 +25,7 @@ with open('./classes/yv8s_vehicle_det_color.txt', 'r') as f:
          cor.clear()
 
 # load YOLO
-net = cv2.dnn.readNetFromONNX('./onnx/yv8s_vehicle_det.onnx')
+net = cv2.dnn.readNetFromONNX('./onnx/yv8s_char_cls.onnx')
 # ln = model.getLayerNames()
 # ln = [ln[i - 1] for i in model.getUnconnectedOutLayers()]
 
@@ -41,7 +41,7 @@ t0 = time.time()
 # forward pass through the model to carry out the detection
 output = net.forward()
 t = time.time()
-
+print('time:', t-t0)
 print(output.shape)
 output = output.transpose((0, 2, 1))
 
@@ -63,7 +63,6 @@ for i in range(numPred):
     
      if (conf > CONFIDENCE_THRESHOLD):
         confs.append(conf)
-        label = class_names[int(class_id)]
         class_ids.append(class_id)
 
         # extract boxes
