@@ -2,95 +2,104 @@ import cv2
 import numpy as np
 import glob
 import time
+from yolo import yolo
 
-INPUT_WIDTH = 640
-INPUT_HEIGHT = 640
-SCORE_THRESHOLD = 0.2
-NMS_THRESHOLD = 0.4
-CONFIDENCE_THRESHOLD = 0.4
+def loadClassNames(ClassArchive):
+        with open(ClassArchive, 'r') as f:
+            class_names = f.read().split('\n')
+        return class_names
 
-# load class names
-with open('./classes/yv8s_vehicle_det.txt', 'r') as f:
-     class_names = f.read().split('\n')
+def loadClassColors(ClassColorsArchive):
+    class_colors = []
+    with open(ClassColorsArchive, 'r') as f:
+        rows = f.read().split('\n')
+        for row in rows:
+            values = row.split(',')
+            color = []
+            for value in values:
+                color.append(int(value))
+            class_colors.append(color.copy())
+            color.clear()
+    return class_colors
 
-COLORS = []
-with open('./classes/yv8s_vehicle_det_color.txt', 'r') as f:
-     linhas = f.read().split('\n')
-     for linha in linhas:
-         valores = linha.split(',')
-         cor = []
-         for valor in valores:
-             cor.append(int(valor))
-         COLORS.append(cor.copy())
-         cor.clear()
+def xywhTOxyixyf(xywh):
+     x0, y0 = int(xywh[0] - 0.5 * xywh[2]), int(xywh[1] - 0.5 * xywh[3])
+     x1, y1 = int(xywh[0] + 0.5 * xywh[2]), int(xywh[1] + 0.5 * xywh[3])
+     return [x0, y0, x1, y1]
 
-# load YOLO
-net = cv2.dnn.readNetFromONNX('./onnx/yv8s_char_cls.onnx')
-# ln = model.getLayerNames()
-# ln = [ln[i - 1] for i in model.getUnconnectedOutLayers()]
+def putRectangleDetection(image, xyxy, class_name, score, color, showScore=True):
+     cv2.rectangle(image, xyxy[0:2], xyxy[2:], color, 2)
+     if showScore:
+          text = "{}: {:.4f}".format(class_name, score)
+          cv2.putText(image, text, (xyxy[0], xyxy[1] - 5), cv2.FONT_HERSHEY_DUPLEX, 0.6, color, 1)
+     else:
+          text = "{}".format(class_name)
+          cv2.putText(image, text, (xyxy[0], xyxy[1] - 5), cv2.FONT_HERSHEY_DUPLEX, 0.6, color, 1)
 
-net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+def cutDetection(image, xyxy):
+     return image[xyxy[1]:xyxy[3], xyxy[0]:xyxy[2]]
+     
+def changeReferenceXY(reference, change):
+     change[0] += reference[0]
+     change[1] += reference[1]
+     change[2] += reference[0]
+     change[3] += reference[1]
 
-# read the image
-img = cv2.imread('car.png')
-# create blob from image
-blob = cv2.dnn.blobFromImage(img, 1/255.0, (INPUT_WIDTH, INPUT_HEIGHT), swapRB=True, crop=False)
-# set the blob to th model
-net.setInput(blob)
-t0 = time.time()
-# forward pass through the model to carry out the detection
-output = net.forward()
-t = time.time()
-print('time:', t-t0)
-print(output.shape)
-output = output.transpose((0, 2, 1))
+vehicle_det = yolo(640, 640,
+                         0.45, 0.25,
+                         loadClassNames('./classes/vehicle_det.txt'),
+                         loadClassColors('./classes/vehicle_det_color.txt'),
+                         './onnx/yv8s_vehicle_det.onnx')
 
-numPred = output[0].shape[0]
+lp_det_pvd = yolo(640, 640,
+                         0.45, 0.25,
+                         loadClassNames('./classes/lp_det.txt'),            
+                         loadClassColors('./classes/lp_det_color.txt'),
+                         './onnx/yv8s_lp_det_pvd.onnx')
 
-boxes = []
-confs = []
-class_ids = []
-image_h, image_w = img.shape[:2]
-x_factor = image_w / INPUT_WIDTH
-y_factor = image_h / INPUT_HEIGHT
+char_det = yolo(384, 384,          
+                         0.45, 0.25,
+                         loadClassNames('./classes/char_det.txt'),
+                         loadClassColors('./classes/char_det_color.txt'),
+                         './onnx/yv8s_char_det.onnx')
 
-for i in range(numPred):
-     pred = output[0][i]
 
-     classes_score = pred[4:]
-     class_id = np.argmax(classes_score)
-     conf = classes_score[class_id]
-    
-     if (conf > CONFIDENCE_THRESHOLD):
-        confs.append(conf)
-        class_ids.append(class_id)
+img = cv2.imread('./car2.png')
 
-        # extract boxes
-        x, y, w, h = pred[0].item(), pred[1].item(), pred[2].item(), pred[3].item() 
-        left = int((x - 0.5 * w) * x_factor)
-        top = int((y - 0.5 * h) * y_factor)
-        width = int(w * x_factor)
-        height = int(h * y_factor)
-        box = np.array([left, top, width, height])
-        boxes.append(box)
+vehicle_det.runYOLODetection(img)
 
-r_class_ids, r_confs, r_boxes = list(), list(), list()
+for i in range(len(vehicle_det.CLASS_IDS)):
+     carCoor = xywhTOxyixyf(vehicle_det.BOXES[i])
+     lp_det_pvd.runYOLODetection(cutDetection(img, carCoor))
+     LPCoor = xywhTOxyixyf(lp_det_pvd.BOXES[i])
+     changeReferenceXY(carCoor, LPCoor)
 
-indexes = cv2.dnn.NMSBoxes(boxes, confs, CONFIDENCE_THRESHOLD, NMS_THRESHOLD) 
-for i in indexes:
-    r_class_ids.append(class_ids[i])
-    r_confs.append(confs[i])
-    r_boxes.append(boxes[i])
+     char_det.runYOLODetection(cutDetection(img, LPCoor))
+     
+     putRectangleDetection(img, carCoor,
+                           vehicle_det.CLASS_NAMES[vehicle_det.CLASS_IDS[i]],
+                           vehicle_det.SCORES[i],
+                           vehicle_det.CLASS_COLORS[vehicle_det.CLASS_IDS[i]])
+     
+     putRectangleDetection(img, LPCoor,
+                           lp_det_pvd.CLASS_NAMES[lp_det_pvd.CLASS_IDS[i]],
+                           lp_det_pvd.SCORES[i],
+                           lp_det_pvd.CLASS_COLORS[lp_det_pvd.CLASS_IDS[i]])
+     
+     for j in range(len(char_det.CLASS_IDS)):
+          charCoor = xywhTOxyixyf(char_det.BOXES[j])
+          print(char_det.CLASS_NAMES[char_det.CLASS_IDS[j]])
+          changeReferenceXY(LPCoor, charCoor)
 
-    (x, y) = (boxes[i][0], boxes[i][1])
-    (w, h) = (boxes[i][2], boxes[i][3])
+          putRectangleDetection(img, charCoor,
+                           char_det.CLASS_NAMES[char_det.CLASS_IDS[j]],
+                           char_det.SCORES[j],
+                           char_det.CLASS_COLORS[char_det.CLASS_IDS[j]],
+                           showScore= False)
 
-    color = COLORS[class_ids[i]]
-    cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
-    text = "{}: {:.4f}".format(class_names[int(class_ids[i])], confs[i])
-    cv2.putText(img, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
 cv2.imshow('Predição', img)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
+
 
