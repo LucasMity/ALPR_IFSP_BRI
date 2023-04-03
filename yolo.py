@@ -2,22 +2,21 @@ import cv2
 import numpy as np
 import time
 
-class yolo:
+class yoloDetection:
 
-    def __init__(self, INPUT_WIDTH, INPUT_HEIGHT,
-                    NMS_THRESHOLD, SCORE_THRESHOLD,
-                    CLASS_NAMES, CLASS_COLORS,
+    def __init__(self, INPUT_IMGSZ,
+                    SCORE_THRESHOLD,
+                    NMS_THRESHOLD,
+                    CLASS_NAMES,
+                    CLASS_COLORS,
                     ONNXArchive):
-        self.INPUT_WIDTH = INPUT_WIDTH
-        self.INPUT_HEIGHT = INPUT_HEIGHT
-        self.NMS_THRESHOLD = NMS_THRESHOLD
+        self.INPUT_IMGSZ = INPUT_IMGSZ
         self.SCORE_THRESHOLD = SCORE_THRESHOLD
+        self.NMS_THRESHOLD = NMS_THRESHOLD
         self.CLASS_NAMES = CLASS_NAMES
         self.CLASS_COLORS = CLASS_COLORS
         self.NET = self.loadYOLOfromONNX(ONNXArchive)
-        self.CLASS_IDS = []
-        self.SCORES = []
-        self.BOXES = []
+        self.DETECTIONS = []
 
     def loadYOLOfromONNX(self, ONNXArchive):
         return cv2.dnn.readNetFromONNX(ONNXArchive)
@@ -37,10 +36,9 @@ class yolo:
         image = np.zeros((length, length, 3), np.uint8)
         image[0:image_h, 0:image_w] = original_image
 
-        x_scale = length / self.INPUT_WIDTH
-        y_scale = length / self.INPUT_HEIGHT
+        scale = length / self.INPUT_IMGSZ
         # create blob from image
-        blob = cv2.dnn.blobFromImage(image, scalefactor= 1/255, size=(self.INPUT_WIDTH, self.INPUT_HEIGHT))
+        blob = cv2.dnn.blobFromImage(image, scalefactor= 1/255, size=(self.INPUT_IMGSZ, self.INPUT_IMGSZ))
     
         # set the blob to the model
         self.NET.setInput(blob)
@@ -55,30 +53,95 @@ class yolo:
         class_ids = []
 
         for i in range(rows):
+            # All Scores
             classes_scores = outputs[0][i][4:]
+            # Max score index
             class_id = np.argmax(classes_scores)
+            # Max score value
             maxScore = classes_scores[class_id]
             
+            # Score filter/Threshold
             if (maxScore >= self.SCORE_THRESHOLD):
-                x, y, w, h = outputs[0][i][0], outputs[0][i][1], outputs[0][i][2], outputs[0][i][3]
-                
-                x = int(x * x_scale)
-                y = int(y * y_scale)
-                w = int(w * x_scale)
-                h = int(h * y_scale)
-                box = [x, y, w, h]
+                box = [
+                    int(outputs[0][i][0] * scale), # X
+                    int(outputs[0][i][1] * scale), # Y
+                    int(outputs[0][i][2] * scale), # W
+                    int(outputs[0][i][3] * scale)  # H
+                ]
                 boxes.append(box)
                 scores.append(maxScore)
                 class_ids.append(class_id)
 
-        self.CLASS_IDS.clear()
-        self.SCORES.clear()
-        self.BOXES.clear()
+        result_boxes = cv2.dnn.NMSBoxes(boxes, scores, self.SCORE_THRESHOLD, self.NMS_THRESHOLD, 0.5)
 
-        result_boxes = cv2.dnn.NMSBoxes(boxes, scores, self.SCORE_THRESHOLD, self.NMS_THRESHOLD, 0.5) 
+        self.DETECTIONS.clear()
+
         for i in range(len(result_boxes)):
             index = result_boxes[i]
-            self.CLASS_IDS.append(class_ids[index])
-            self.SCORES.append(scores[index])
-            self.BOXES.append(boxes[index])
+            box = boxes[index]
+            detection = {
+                'CLASS_ID': class_ids[index],
+                'CLASS_NAME': self.CLASS_NAMES[class_ids[index]],
+                'SCORE': scores[index],
+                'BOX': box,
+                'SCALE': scale
+            }
+            self.DETECTIONS.append(detection)
 
+
+class yoloCLS:
+
+    def __init__(self, INPUT_IMGSZ,
+                    CLASS_NAMES,
+                    CLASS_COLORS,
+                    ONNXArchive):
+        self.INPUT_IMGSZ = INPUT_IMGSZ
+        self.CLASS_NAMES = CLASS_NAMES
+        self.CLASS_COLORS = CLASS_COLORS
+        self.NET = self.loadYOLOfromONNX(ONNXArchive)
+        self.CLS = []
+
+    def loadYOLOfromONNX(self, ONNXArchive):
+        return cv2.dnn.readNetFromONNX(ONNXArchive)
+
+    def setDevice(self, device):
+        if device == 'cpu':
+            self.NET.setPreferableBackend(cv2.dnn.DNN_BACKEND_CPU)
+            self.NET.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        elif device == 'cuda':
+            self.NET.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+            self.NET.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
+
+    def runYOLOCLS(self, original_image):
+        image_h, image_w = original_image.shape[:2]
+
+        length = max(image_h, image_w)
+        image = np.zeros((length, length, 3), np.uint8)
+        image[0:image_h, 0:image_w] = original_image
+
+        scale = length / self.INPUT_IMGSZ
+        # create blob from image
+        blob = cv2.dnn.blobFromImage(image, scalefactor= 1/255, size=(self.INPUT_IMGSZ, self.INPUT_IMGSZ))
+    
+        # set the blob to the model
+        self.NET.setInput(blob)
+        # forward pass through the model to carry out the detection
+        outputs = self.NET.forward()
+
+        outputs = np.array([cv2.transpose(outputs[0])])
+        rows = outputs.shape[1]
+        print(outputs.shape)
+        print(outputs)
+
+        # All Scores
+        classes_scores = outputs[0][0][:]
+        # Max score index
+        class_id = np.argmax(classes_scores)
+        # Max score value
+        maxScore = classes_scores[class_id]
+        classification = {
+            'CLASS_ID': class_id,
+            'CLASS_NAME': self.CLASS_NAMES[class_id],
+            'SCORE': maxScore
+        }
+        self.CLS = classification
