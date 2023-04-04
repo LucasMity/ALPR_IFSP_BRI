@@ -1,0 +1,47 @@
+# Ultralytics YOLO 🚀, GPL-3.0 license
+# UFPR ALPR vehicle detection dataset by Lucas Mity Kamado
+
+
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+path: C:/Users/lucas/OneDrive - ifsp.edu.br/Projeto OCR/Bases_Dados/UFPR-ALPR_charSeg_dataset/  # dataset root dir
+train: images/train  # train images (relative to 'path') 1800 images
+val: images/val  # val images (relative to 'path') 900 images
+test: images/test  # test images (optional) 1800 images
+
+# Classes
+names:
+  0: '0'
+  1: '1'
+  2: '2'
+  3: '3'
+  4: '4'
+  5: '5'
+  6: '6'
+  7: '7'
+  8: '8'
+  9: '9'
+  10: 'A'
+  11: 'B'
+  12: 'C'
+  13: 'D'
+  14: 'E'
+  15: 'F'
+  16: 'G'
+  17: 'H'
+  18: 'I'
+  19: 'J'
+  20: 'K'
+  21: 'L'
+  22: 'M'
+  23: 'N'
+  24: 'P'
+  25: 'Q'
+  26: 'R'
+  27: 'S'
+  28: 'T'
+  29: 'U'
+  30: 'V'
+  31: 'W'
+  32: 'X'
+  33: 'Y'
+  34: 'Z'
