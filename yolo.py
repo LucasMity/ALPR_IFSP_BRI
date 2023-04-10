@@ -39,6 +39,10 @@ class yoloDetection:
         scale = length / self.INPUT_IMGSZ
         # create blob from image
         blob = cv2.dnn.blobFromImage(image, scalefactor= 1/255, size=(self.INPUT_IMGSZ, self.INPUT_IMGSZ))
+        # r = blob[0, 0, :, :]
+        # cv2.imshow('teste.jpg', r)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
     
         # set the blob to the model
         self.NET.setInput(blob)
@@ -99,7 +103,7 @@ class yoloCLS:
         self.CLASS_NAMES = CLASS_NAMES
         self.CLASS_COLORS = CLASS_COLORS
         self.NET = self.loadYOLOfromONNX(ONNXArchive)
-        self.CLS = []
+        self.CLS = None
 
     def loadYOLOfromONNX(self, ONNXArchive):
         return cv2.dnn.readNetFromONNX(ONNXArchive)
@@ -130,8 +134,6 @@ class yoloCLS:
 
         outputs = np.array([cv2.transpose(outputs[0])])
         rows = outputs.shape[1]
-        print(outputs.shape)
-        print(outputs)
 
         # All Scores
         classes_scores = outputs[0][0][:]
